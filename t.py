@@ -168,5 +168,21 @@ class Game:
             print(*out)
 
 
+class MockInput:
+    def __init__(self, responses):
+        self.generator = self.input_generator(responses)
+
+    def input_generator(self, responses):
+        yield from responses
+
+    def __call__(self, prompt=''):
+        try:
+            return next(self.generator)
+        except StopIteration:
+            raise SystemExit(0)
+
+
+# input = MockInput(['5089 4758 11505 6078 6550 0', '4963 5750'])
+
 g = Game()
 g.play()
