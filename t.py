@@ -33,7 +33,7 @@ def angle_between(v1, v2):
 
 @dataclass(kw_only=True)
 class Point:
-    pos: np.ndarray = np.array([0, 0])  # this is default pos
+    pos: np.ndarray = field(default_factory=lambda: np.array([0, 0]))
 
     def interpolate(self, dest: 'Point', percent):
         return ((1 - percent) * self.pos + percent * dest.pos).astype(int)
@@ -50,7 +50,7 @@ class Pod(Point):
     pass
 
 
-# dependency
+# strategies
 
 def steer_strategy(player: 'Player'):
     """determine future target"""
@@ -112,25 +112,7 @@ class Player(Pod):
     def action(self, steer_strategy, thrust_strategy):
         steer = steer_strategy(self)
         thrust = thrust_strategy(self)
-        return steer, thrust
-
-
-def load_state():
-    x, y, ncx, ncy, ncd, nca = [int(i) for i in input().split()]
-    opp_x, opp_y = [int(i) for i in input().split()]
-
-    next_checkpoint = Checkpoint(np.array([ncx, ncy]), angle=nca, distance=ncd)
-    player = Player(np.array([x, y]), next_cp=next_checkpoint)
-    enemy = Pod(np.array([opp_x, opp_y]))
-
-    return player, enemy
-
-
-while True:
-    player, enemy = load_state()
-    log(player.pos, player.next_cp.pos, player.next_cp.distance, player.next_cp.angle)
-    print(*player.action())
-    break
+        return *steer, thrust
 
 
 class Game:
@@ -175,3 +157,16 @@ class Game:
         # player
         self.player.pos = player_pos
         self.player.checkpoints = self.checkpoints
+
+    def play(self):
+        while True:
+            self.update_state()
+            out = self.player.action(
+                steer_strategy,
+                thrust_strategy,
+            )
+            print(*out)
+
+
+g = Game()
+g.play()
