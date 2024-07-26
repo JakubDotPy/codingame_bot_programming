@@ -20,6 +20,8 @@ class Params:
     BOOST_ANGLE = 3
 
 
+# ========== helper functions ==========
+
 def unit_vector(vector):
     return vector / np.linalg.norm(vector)
 
@@ -31,6 +33,16 @@ def angle_between(v1, v2):
     return np.rad2deg(np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0)))
 
 
+# ========== base classes ==========
+
+class State:
+    def action(self, context):
+        raise NotImplementedError("Subclasses must implement this method")
+
+    def next_state(self, context):
+        raise NotImplementedError("Subclasses must implement this method")
+
+
 @dataclass(kw_only=True)
 class Point:
     pos: np.ndarray = field(default_factory=lambda: np.array([0, 0]))
@@ -39,18 +51,7 @@ class Point:
         return ((1 - percent) * self.pos + percent * dest.pos).astype(int)
 
 
-@dataclass
-class Checkpoint(Point):
-    angle: int = 0
-    distance: int = 0
-
-
-@dataclass
-class Pod(Point):
-    pass
-
-
-# strategies
+# ========== reusable strategies ==========
 
 def steer_strategy(player: 'Player'):
     """determine future target"""
@@ -94,35 +95,86 @@ def thrust_strategy(player: 'Player'):
     return boost or int(thrust)
 
 
+# ========== state ==========
+
+
+class FirstRound(State):
+    def action(self, context):
+        steer = steer_strategy(context)
+        thrust = thrust_strategy(context)
+        print(*steer, thrust)
+
+    def next_state(self, context):
+        # TODO: add proper transition after first round
+        return Race()
+
+
+class Race(State):
+    def action(self, context):
+        steer = steer_strategy(context)
+        thrust = thrust_strategy(context)
+        print(*steer, thrust)
+
+    def next_state(self, context):
+        return self
+
+
+class StateMachine:
+    def __init__(self, initial_state):
+        self.context = None
+        self.state = initial_state
+
+    def set_context(self, context):
+        self.context = context
+
+    def action(self):
+        if self.state is None:
+            raise SystemExit("State machine is empty")
+
+        self.state.action(self.context)
+        self.state = self.state.next_state(self.context)
+
+
+# ========== game entities ==========
+
+@dataclass
+class Checkpoint(Point):
+    angle: int = 0
+    distance: int = 0
+
+
+@dataclass
+class Pod(Point):
+    pass
+
+
 @dataclass
 class Player(Pod):
+    initial_state: State
+    state_machine: StateMachine = field(init=False)
     checkpoints: list[Checkpoint] = field(init=False, default_factory=list)
     boost_used: bool = field(init=False, default=False)
+
+    def __post_init__(self):
+        self.state_machine = StateMachine(self.initial_state)
+        self.state_machine.set_context(self)
 
     @property
     def next_cp(self):
         return self.checkpoints[0]
-
-    def _steer(self, strategy, checkpoints):
-        return strategy(self, checkpoints)
-
-    def _thrust(self, strategy, checkpoints):
-        return strategy(self, checkpoints)
-
-    def action(self, steer_strategy, thrust_strategy):
-        steer = steer_strategy(self)
-        thrust = thrust_strategy(self)
-        return *steer, thrust
 
 
 class Game:
     def __init__(self):
         self.first_round = True
         self.checkpoints = collections.deque()  # will be cycled later
-        self.player = Player()
+
+        # prepare player
+        self.player = Player(initial_state=FirstRound())
         self.enemy = Pod()
 
-    def read_state(self):
+    @staticmethod
+    def read_state():
         (
             x, y,
             next_checkpoint_x, next_checkpoint_y,
@@ -161,25 +213,15 @@ class Game:
     def play(self):
         while True:
             self.update_state()
-            out = self.player.action(
-                steer_strategy,
-                thrust_strategy,
-            )
-            print(*out)
+            self.player.state_machine.action()
 
 
 class MockInput:
     def __init__(self, responses):
-        self.generator = self.input_generator(responses)
-
-    def input_generator(self, responses):
-        yield from responses
+        self.responses = iter(responses)
 
     def __call__(self, prompt=''):
-        try:
-            return next(self.generator)
-        except StopIteration:
-            raise SystemExit(0)
+        return next(self.responses)
 
 
 # input = MockInput(['5089 4758 11505 6078 6550 0', '4963 5750'])
