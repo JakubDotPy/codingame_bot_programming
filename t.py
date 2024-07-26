@@ -3,6 +3,7 @@ import math
 import sys
 from dataclasses import dataclass
 from dataclasses import field
+from functools import cached_property
 from functools import partial
 
 import numpy as np
@@ -11,12 +12,12 @@ log = partial(print, file=sys.stderr, flush=True)
 
 
 class Params:
-    SLOW_ANGLE = 30
+    SLOW_ANGLE = 90
 
-    SLOWDOWN_DIST = 2000  # how far should the slowdown process start
-    SLOWDOWN_DIST_FACTOR = 40
+    SLOWDOWN_DIST = 1000  # how far should the slowdown process start
+    SLOWDOWN_DIST_FACTOR = 20
 
-    BOOST_DIST = 5000
+    BOOST_DIST = 2000
     BOOST_ANGLE = 3
 
 
@@ -47,8 +48,14 @@ class State:
 class Point:
     pos: np.ndarray = field(default_factory=lambda: np.array([0, 0]))
 
-    def interpolate(self, dest: 'Point', percent):
+    def interpolate_percent(self, dest: 'Point', percent):
         return ((1 - percent) * self.pos + percent * dest.pos).astype(int)
+
+    def interpolate_units(self, dest: 'Point', amt: int):
+        direction = dest.pos - self.pos
+        direction_normalized = direction / np.linalg.norm(direction)
+        X = self.pos + direction_normalized * amt
+        return X.astype(int)
 
 
 # ========== reusable strategies ==========
@@ -61,14 +68,19 @@ def steer_strategy(player: 'Player'):
     return target
 
 
+def steer_strategy(player: 'Player'):
+    """determine future target"""
+    return player.next_cp.aimpoint
+
+
 def thrust_strategy(player: 'Player'):
     """determine future thrust"""
 
     def by_angle(angle):
         if abs(angle) > Params.SLOW_ANGLE:
-            return 5
+            return 30
         else:
-            return max(0, 100 - abs(angle))
+            return 100
 
     def by_distance(distance):
         value = math.pow(Params.SLOWDOWN_DIST_FACTOR, distance // (Params.SLOWDOWN_DIST // 2))
@@ -137,10 +149,18 @@ class StateMachine:
 
 # ========== game entities ==========
 
+ARENA_CENTER = Point(pos=np.array([8000, 4500]))
+
+
 @dataclass
 class Checkpoint(Point):
     angle: int = 0
     distance: int = 0
+    radius: int = 600
+
+    @cached_property
+    def aimpoint(self):
+        return self.interpolate_units(ARENA_CENTER, self.radius)
 
 
 @dataclass
